@@ -537,16 +537,17 @@ class PDP8:
         else:
             print('Invalid address')
 
-def captureTerm():
-    global prev_term
-    if os.name != 'nt':
-        stdin_fd = sys.stdin.fileno()
-        prev_term = termios.tcgetattr(stdin_fd)
-        tty.setcbreak(stdin_fd)
 
-def releaseTerm():
-    if os.name != 'nt':
-        termios.tcsetattr(sys.stdin.fileno(), termios.TCSAFLUSH, prev_term)
+class HostTerminal(object):
+    def __enter__(self):
+        if os.name != 'nt':
+            stdin_fd = sys.stdin.fileno()
+            self.prev_term = termios.tcgetattr(stdin_fd)
+            tty.setcbreak(stdin_fd)
+
+    def __exit__(self, type, value, traceback):
+        if os.name != 'nt':
+            termios.tcsetattr(sys.stdin.fileno(), termios.TCSAFLUSH, self.prev_term)
 
 def runDebugger():
     """ Runs an incredibly crude command prompt allowing basic manipulation of memory and the CPU """
@@ -555,7 +556,6 @@ def runDebugger():
     # Set up some stuff so we can trap Ctrl+C to stop execution of the processor.
     def breakHandler(signal, frame):
         print("CTRL-C halt")
-        releaseTerm()
         cpu._halted = True
     
     signal(SIGINT, breakHandler)    
@@ -589,10 +589,9 @@ def runDebugger():
                 # r - Run the processor from the current PC
                 elif command == "r":
                     cpu._halted = False
-                    captureTerm()
-                    while (not cpu._halted):
-                        cpu.step()
-                    releaseTerm()
+                    with HostTerminal():
+                        while (not cpu._halted):
+                            cpu.step()
 
                 # d - Deposit a value into memory
                 # (usage: "d <addr> <value>")
